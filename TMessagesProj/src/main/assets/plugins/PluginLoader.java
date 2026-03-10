@@ -2,6 +2,7 @@ package org.telegram.plugins;
 
 import android.content.Context;
 import android.util.Log;
+import android.os.Environment;
 
 import com.chaquo.python.Python;
 import com.chaquo.python.android.AndroidPlatform;
@@ -17,6 +18,7 @@ public class PluginLoader {
     private static final String TAG = "PluginLoader";
     private static Python py = null;
     private static boolean initialized = false;
+    private static File pluginsDir = null;
     
     public static void initPython() {
         if (!initialized) {
@@ -29,42 +31,47 @@ public class PluginLoader {
         }
     }
     
+    public static File getPluginsDir() {
+        if (pluginsDir == null) {
+            // Создаём папку в публичной памяти телефона
+            File baseDir = new File(Environment.getExternalStorageDirectory(), "SaidGram");
+            pluginsDir = new File(baseDir, "plugins");
+            pluginsDir.mkdirs();
+            
+            Log.d(TAG, "Папка для плагинов: " + pluginsDir.getAbsolutePath());
+        }
+        return pluginsDir;
+    }
+    
     public static void loadPlugins() {
         initPython();
         
-        // Копируем плагины из assets в доступную папку
-        File pluginsDir = new File(ApplicationLoader.applicationContext.getFilesDir(), "plugins");
-        pluginsDir.mkdirs();
+        File dir = getPluginsDir();
         
-        try {
-            String[] plugins = ApplicationLoader.applicationContext.getAssets().list("plugins");
-            if (plugins != null) {
-                for (String plugin : plugins) {
-                    if (plugin.endsWith(".py")) {
-                        File destFile = new File(pluginsDir, plugin);
-                        
-                        // Копируем файл из assets
-                        InputStream is = ApplicationLoader.applicationContext.getAssets().open("plugins/" + plugin);
-                        FileOutputStream os = new FileOutputStream(destFile);
-                        byte[] buffer = new byte[1024];
-                        int length;
-                        while ((length = is.read(buffer)) > 0) {
-                            os.write(buffer, 0, length);
-                        }
-                        os.close();
-                        is.close();
-                        
-                        Log.d(TAG, "Скопирован плагин: " + plugin);
-                        
-                        // Загружаем модуль Python
-                        String moduleName = plugin.replace(".py", "");
-                        py.getModule(moduleName);
-                        Log.d(TAG, "Загружен плагин: " + plugin);
-                    }
+        if (!dir.exists()) {
+            Log.d(TAG, "Папка с плагинами не найдена: " + dir.getAbsolutePath());
+            return;
+        }
+        
+        File[] plugins = dir.listFiles((d, name) -> name.endsWith(".py"));
+        
+        if (plugins != null) {
+            for (File plugin : plugins) {
+                try {
+                    String moduleName = plugin.getName().replace(".py", "");
+                    py.getModule(moduleName);
+                    Log.d(TAG, "Загружен плагин: " + plugin.getName());
+                } catch (Exception e) {
+                    Log.e(TAG, "Ошибка загрузки плагина: " + plugin.getName(), e);
                 }
             }
-        } catch (IOException e) {
-            Log.e(TAG, "Ошибка загрузки плагинов", e);
         }
+    }
+    
+    // Метод для перезагрузки плагинов (можно вызвать из меню)
+    public static void reloadPlugins() {
+        Log.d(TAG, "Перезагрузка плагинов...");
+        // Python уже загружен, просто перезагружаем модули
+        loadPlugins();
     }
 }
